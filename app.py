@@ -17,15 +17,16 @@ st.set_page_config(page_title="Skriptsuche", page_icon="🔎", layout="wide")
 
 
 @st.cache_resource
-def services():
-    cfg = load_config()
+def _clients(cfg):
+    # Cache hängt an den Secret-Werten: geänderte Secrets → neue Verbindungen, kein Neustart nötig
     db = DB(cfg.supabase_url, cfg.supabase_key)
     ai = AI(cfg.anthropic_key, cfg.voyage_key, cfg.index_model, cfg.query_model, cfg.voyage_model)
-    return cfg, db, ai
+    return db, ai
 
 
 try:
-    cfg, db, ai = services()
+    cfg = load_config()
+    db, ai = _clients(cfg)
 except RuntimeError as e:
     st.title("🔎 Skriptsuche – Einrichtung unvollständig")
     st.error(str(e))
@@ -55,7 +56,12 @@ def faecher() -> list[dict]:
 # ---------- Seitenleiste ----------
 with st.sidebar:
     st.header("🔎 Skriptsuche")
-    fl = faecher()
+    try:
+        fl = faecher()
+    except Exception as e:
+        st.error("Keine Verbindung zur Datenbank. Bitte SUPABASE_URL und SUPABASE_SECRET_KEY in den "
+                 f"Secrets prüfen. ({type(e).__name__})")
+        st.stop()
     optionen = ["Alle Fächer"] + [f["fach"] for f in fl]
     fach_wahl = st.selectbox("Fach", optionen)
     fach = None if fach_wahl == "Alle Fächer" else fach_wahl
