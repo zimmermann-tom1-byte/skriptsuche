@@ -53,7 +53,7 @@ with st.sidebar:
     fach = None if fach_wahl == "Alle Fächer" else fach_wahl
     st.caption(f"{sum(f['dokumente'] for f in fl)} Dateien · {sum(f['seiten'] for f in fl)} Seiten im Index")
 
-    if st.button("🔄 Jetzt aktualisieren", use_container_width=True):
+    if cfg.ms_client_id and st.button("🔄 Jetzt aktualisieren", use_container_width=True):
         with st.status("Gleiche OneDrive ab …", expanded=True) as status:
             try:
                 s = run_sync(cfg, db, ai, log=st.write)
@@ -122,8 +122,8 @@ with tab_suche:
 
 # ---------- Manuell hinzufügen ----------
 with tab_upload:
-    st.markdown("Normalerweise läuft alles automatisch über OneDrive (jede Nacht). "
-                "Hier kannst du zusätzlich einzelne PDFs direkt aufnehmen.")
+    st.markdown("PDFs auswählen (auf dem iPad geht das direkt aus OneDrive), Fach wählen, „Einlesen“ tippen. "
+                "Gleiche Datei nochmal hochladen = wird nicht doppelt aufgenommen.")
     files = st.file_uploader("PDFs", type=["pdf"], accept_multiple_files=True)
     vorhandene = [f["fach"] for f in faecher()]
     fach_neu = st.selectbox("Fach", vorhandene + ["(neues Fach)"]) if vorhandene else "(neues Fach)"
@@ -148,7 +148,8 @@ with tab_upload:
 with tab_setup:
     st.subheader("OneDrive")
     if not cfg.ms_client_id:
-        st.warning("MS_CLIENT_ID fehlt in den Secrets.")
+        st.info("OneDrive-Abgleich ist nicht eingerichtet. Neue PDFs bitte im Tab „Unterlagen hinzufügen“ "
+                "aufnehmen. (Nachrüsten: MS_CLIENT_ID in den Secrets setzen.)")
     else:
         verbunden = bool(db.get_setting(graph.TOKEN_KEY))
         st.write("Status: " + ("✅ verbunden" if verbunden else "❌ nicht verbunden"))

@@ -1,9 +1,10 @@
 name: OneDrive-Abgleich
 
 on:
-  schedule:
-    - cron: "17 2 * * *"   # täglich ca. 04:17 Uhr deutscher Sommerzeit
-  workflow_dispatch: {}      # manuell startbar über den Tab „Actions“
+  # Nächtlicher Lauf erst aktivieren, wenn OneDrive eingerichtet ist (MS_CLIENT_ID):
+  # schedule:
+  #   - cron: "17 2 * * *"
+  workflow_dispatch: {}
 
 concurrency:
   group: sync
