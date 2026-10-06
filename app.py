@@ -24,7 +24,15 @@ def services():
     return cfg, db, ai
 
 
-cfg, db, ai = services()
+try:
+    cfg, db, ai = services()
+except RuntimeError as e:
+    st.title("🔎 Skriptsuche – Einrichtung unvollständig")
+    st.error(str(e))
+    st.markdown("Unten rechts **Manage app → ⋮ → Settings → Secrets** öffnen und prüfen: "
+                "jede Zeile im Format `NAME = \"wert\"`, Wert in geraden Anführungszeichen, "
+                "Namen exakt wie in der Anleitung. Danach speichern – die App startet neu.")
+    st.stop()
 
 # ---------- Passwortschutz ----------
 if cfg.app_password and not st.session_state.get("auth"):

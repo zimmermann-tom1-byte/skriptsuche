@@ -8,7 +8,11 @@ import os
 from dataclasses import dataclass
 
 
+_SECRETS_ERROR: str | None = None
+
+
 def _get(name: str, default: str | None = None) -> str | None:
+    global _SECRETS_ERROR
     val = os.environ.get(name)
     if val:
         return val
@@ -16,10 +20,21 @@ def _get(name: str, default: str | None = None) -> str | None:
         import streamlit as st
 
         if name in st.secrets:
-            return str(st.secrets[name])
-    except Exception:
+            return str(st.secrets[name]).strip()
+    except ModuleNotFoundError:
         pass
+    except Exception as e:  # z. B. Tippfehler im Secrets-Text (TOML)
+        _SECRETS_ERROR = f"{type(e).__name__}: {e}"
     return default
+
+
+def _secret_names() -> list[str]:
+    try:
+        import streamlit as st
+
+        return list(st.secrets.keys())
+    except Exception:
+        return []
 
 
 @dataclass(frozen=True)
@@ -40,7 +55,12 @@ def load_config() -> Config:
     url = _get("SUPABASE_URL")
     key = _get("SUPABASE_SECRET_KEY")
     if not url or not key:
-        raise RuntimeError("SUPABASE_URL und SUPABASE_SECRET_KEY müssen gesetzt sein.")
+        if _SECRETS_ERROR:
+            hint = f"Die Secrets konnten nicht gelesen werden – vermutlich ein Tippfehler ({_SECRETS_ERROR[:200]})."
+        else:
+            found = ", ".join(_secret_names()) or "keine"
+            hint = f"Gefundene Secrets: {found}."
+        raise RuntimeError(f"SUPABASE_URL und SUPABASE_SECRET_KEY müssen gesetzt sein. {hint}")
     return Config(
         supabase_url=url.rstrip("/"),
         supabase_key=key,
