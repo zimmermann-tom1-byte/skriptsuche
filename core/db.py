@@ -10,6 +10,17 @@ import httpx
 BUCKET = "pages"
 
 
+def _clean(value):
+    """Postgres-Text darf keine Null-Zeichen enthalten (kommen in manchen PDFs vor)."""
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, list):
+        return [_clean(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _clean(v) for k, v in value.items()}
+    return value
+
+
 class DB:
     def __init__(self, url: str, key: str):
         self.url = url
@@ -34,10 +45,10 @@ class DB:
         if upsert_on:
             headers["Prefer"] += ",resolution=merge-duplicates"
             params["on_conflict"] = upsert_on
-        return self._rest("POST", table, json=rows, headers=headers, params=params)
+        return self._rest("POST", table, json=_clean(rows), headers=headers, params=params)
 
     def update(self, table: str, match: dict[str, str], values: dict) -> None:
-        self._rest("PATCH", table, params=match, json=values)
+        self._rest("PATCH", table, params=match, json=_clean(values))
 
     def delete(self, table: str, match: dict[str, str]) -> None:
         self._rest("DELETE", table, params=match)
