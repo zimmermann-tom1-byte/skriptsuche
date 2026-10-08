@@ -12,6 +12,7 @@ from core.db import DB
 from core.indexer import index_pdf
 from core.search import neighbour_pages, search
 from core.sync import run_sync
+from core.topics import backfill, documents_overview
 
 st.set_page_config(page_title="Skriptsuche", page_icon="🔎", layout="wide")
 
@@ -79,7 +80,8 @@ with st.sidebar:
             except Exception as e:
                 status.update(label=f"Fehler: {e}", state="error")
 
-tab_suche, tab_upload, tab_setup = st.tabs(["Suchen", "Unterlagen hinzufügen", "Einrichtung"])
+tab_suche, tab_themen, tab_upload, tab_setup = st.tabs(
+    ["Suchen", "Themen", "Unterlagen hinzufügen", "Einrichtung"])
 
 # ---------- Suchen ----------
 with tab_suche:
@@ -133,6 +135,81 @@ with tab_suche:
                         if nb.get("image_url"):
                             st.image(nb["image_url"], caption=f"S. {nb['page_number']}",
                                      use_container_width=True)
+
+# ---------- Themenübersicht ----------
+ART_ICON = {"Folien": "📘", "Aufgaben": "✏️", "Handout": "📄"}
+
+
+def _seiten(t: dict) -> str:
+    von, bis = t.get("von"), t.get("bis")
+    if not von:
+        return ""
+    return f"S. {von}" if not bis or bis == von else f"S. {von}–{bis}"
+
+
+def _datum(d: str | None) -> str:
+    return f"{d[8:10]}.{d[5:7]}." if d else "ohne Datum"
+
+
+with tab_themen:
+    try:
+        docs = documents_overview(db, fach)
+    except Exception as e:
+        st.error(f"Übersicht konnte nicht geladen werden: {e}")
+        docs = []
+    fertig = [d for d in docs if d.get("indexed_at")]
+    ohne = [d for d in fertig if not d.get("topics")]
+
+    if ohne:
+        st.info(f"Für {len(ohne)} Datei(en) gibt es noch keine Themenübersicht.")
+        if st.button("Themenübersicht erstellen", type="primary"):
+            with st.status("Erstelle Themenübersicht …", expanded=True) as status:
+                s = backfill(db, ai, log=st.write)
+                status.update(label=f"Fertig: {s['themen']} Dateien zusammengefasst"
+                                    + (f", {s['fehler']} Fehler" if s["fehler"] else ""),
+                              state="complete" if not s["fehler"] else "error")
+            st.rerun()
+
+    if not fertig:
+        st.write("Noch keine Unterlagen eingelesen.")
+    else:
+        ansicht = st.radio("Ansicht", ["Chronologisch", "Alle Themen kompakt"], horizontal=True,
+                           label_visibility="collapsed")
+        faecher_liste = list(dict.fromkeys(d["fach"] for d in fertig))
+
+        for f_name in faecher_liste:
+            f_docs = [d for d in fertig if d["fach"] == f_name]
+            n_themen = sum(len((d.get("topics") or {}).get("themen", [])) for d in f_docs)
+            st.subheader(f"{f_name}")
+            st.caption(f"{len(f_docs)} Dateien · {n_themen} Themen")
+
+            if ansicht == "Alle Themen kompakt":
+                zeilen = []
+                for d in f_docs:
+                    for t in (d.get("topics") or {}).get("themen", []):
+                        zeilen.append(f"- **{t.get('titel', '?')}** · {_datum(d.get('lecture_date'))} · "
+                                      f"{d['name']} {_seiten(t)}")
+                st.markdown("\n".join(zeilen) or "_Noch keine Themen._")
+                continue
+
+            for d in f_docs:
+                tp = d.get("topics") or {}
+                icon = ART_ICON.get(tp.get("art"), "📎")
+                with st.expander(f"{icon} {_datum(d.get('lecture_date'))} · {d['name']}"):
+                    if tp.get("zusammenfassung"):
+                        st.markdown(f"_{tp['zusammenfassung']}_")
+                    if not tp.get("themen"):
+                        st.caption("Keine Themen erkannt.")
+                    for i, t in enumerate(tp.get("themen", [])):
+                        st.markdown(f"**{t.get('titel', '?')}** {('· ' + _seiten(t)) if _seiten(t) else ''}")
+                        if t.get("inhalte"):
+                            st.markdown("\n".join(f"  - {x}" for x in t["inhalte"]))
+                        if t.get("von") and st.toggle("Folie zeigen", key=f"show-{d['id']}-{i}"):
+                            path = f"{d['id']}/{int(t['von']):04d}.jpg"
+                            url = db.signed_urls([path]).get(path)
+                            if url:
+                                st.image(url, caption=f"{d['name']}, S. {t['von']}",
+                                         use_container_width=True)
 
 # ---------- Manuell hinzufügen ----------
 with tab_upload:
@@ -194,3 +271,25 @@ with tab_setup:
     st.subheader("Dienste")
     st.write("Claude (Bilderkennung): " + ("✅" if cfg.anthropic_key else "❌ ANTHROPIC_API_KEY fehlt"))
     st.write("Voyage (Bedeutungssuche): " + ("✅" if cfg.voyage_key else "➖ optional, nicht gesetzt"))
+
+    st.subheader("Index-Zustand")
+    try:
+        alle = documents_overview(db)
+        kaputt = [d for d in alle if not d.get("indexed_at")]
+        ohne_emb = db.select("pages", {"embedding": "is.null", "select": "id", "limit": "1000"})
+    except Exception as e:
+        st.error(f"Konnte Zustand nicht laden: {e}")
+        kaputt, ohne_emb = [], []
+    if kaputt:
+        st.warning("Nicht vollständig eingelesen – bitte im Tab „Unterlagen hinzufügen“ erneut hochladen:\n\n"
+                   + "\n".join(f"- {d['fach']} / {d['name']}" for d in kaputt))
+    if ohne_emb and cfg.voyage_key:
+        st.write(f"🧭 {len(ohne_emb)} Seiten ohne Bedeutungs-Index (Voyage war überlastet).")
+    if (ohne_emb and cfg.voyage_key) or any(not d.get("topics") for d in alle if d.get("indexed_at")):
+        if st.button("Fehlendes nachholen"):
+            with st.status("Hole nach …", expanded=True) as status:
+                s = backfill(db, ai, log=st.write)
+                status.update(label=f"Fertig: {s['themen']} Themenübersichten, {s['embeddings']} Seiten indiziert"
+                                    + (f", {s['fehler']} Fehler" if s["fehler"] else ""), state="complete")
+    elif not kaputt:
+        st.write("✅ Alles vollständig.")

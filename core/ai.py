@@ -5,6 +5,7 @@ import base64
 import io
 import json
 import re
+import time
 
 import httpx
 from PIL import Image
@@ -41,7 +42,7 @@ def _parse_json(text: str):
     if m:
         text = m.group(1)
     start = min([i for i in (text.find("{"), text.find("[")) if i >= 0], default=0)
-    return json.loads(text[start:])
+    return json.JSONDecoder().raw_decode(text[start:])[0]  # ignoriert Text nach dem JSON
 
 
 class AI:
@@ -78,6 +79,37 @@ class AI:
         )
         out = "".join(b.text for b in msg.content if b.type == "text").strip()
         return "" if out == "-" else out
+
+    def extract_topics(self, fach: str, name: str, pages: list[dict]) -> dict | None:
+        """Themenübersicht eines Dokuments: Zusammenfassung + Themen mit Seitenbereichen."""
+        if not self.claude or not pages:
+            return None
+        budget = max(300, 24000 // len(pages))  # ~24k Zeichen Gesamttext
+        body = "\n\n".join(
+            f"--- Seite {p['page_number']} ---\n{(p.get('content') or '')[:budget]}\n"
+            f"{(p.get('figure_description') or '')[: budget // 3]}"
+            for p in pages
+        )
+        prompt = (
+            f"Fach: {fach}\nDatei: {name}\n\n"
+            "Das ist der Inhalt eines Vorlesungsdokuments (Folien, Aufgabenblatt oder Handout) aus einem "
+            "Ingenieurstudium. Erstelle eine Themenübersicht, damit ein Student sieht, was behandelt wurde.\n"
+            "Antworte nur mit JSON:\n"
+            '{"art": "Folien" | "Aufgaben" | "Handout" | "Sonstiges", '
+            '"zusammenfassung": "1–2 Sätze", '
+            '"themen": [{"titel": "Thema, wie es im Lehrbuch heißen würde", "von": erste_seite, "bis": letzte_seite, '
+            '"inhalte": ["2–4 kurze Stichpunkte: zentrale Formeln, Regeln, Begriffe"]}]}\n'
+            "3–10 Themen in Reihenfolge des Dokuments. Titelfolien, Gliederungen und Organisatorisches weglassen.\n\n"
+            f"{body}"
+        )
+        msg = self.claude.messages.create(
+            model=self.index_model, max_tokens=2000, messages=[{"role": "user", "content": prompt}]
+        )
+        text = "".join(b.text for b in msg.content if b.type == "text")
+        data = _parse_json(text)
+        if not isinstance(data, dict) or not isinstance(data.get("themen"), list):
+            return None
+        return data
 
     # ---------- Suche ----------
     def analyze_task(self, image: bytes | None, note: str) -> dict:
@@ -147,14 +179,18 @@ class AI:
         if not self.voyage_key or not texts:
             return None
         out: list[list[float]] = []
-        for i in range(0, len(texts), 64):
-            r = httpx.post(
-                VOYAGE_URL,
-                headers={"Authorization": f"Bearer {self.voyage_key}"},
-                json={"input": texts[i : i + 64], "model": self.voyage_model,
-                      "input_type": input_type, "output_dimension": 1024},
-                timeout=120,
-            )
+        for i in range(0, len(texts), 16):
+            for attempt in range(5):  # Voyage drosselt Konten ohne Zahlungsmethode stark (429)
+                r = httpx.post(
+                    VOYAGE_URL,
+                    headers={"Authorization": f"Bearer {self.voyage_key}"},
+                    json={"input": texts[i : i + 16], "model": self.voyage_model,
+                          "input_type": input_type, "output_dimension": 1024},
+                    timeout=120,
+                )
+                if r.status_code != 429:
+                    break
+                time.sleep(min(60, 15 * (attempt + 1)))
             r.raise_for_status()
             data = sorted(r.json()["data"], key=lambda d: d["index"])
             out += [d["embedding"] for d in data]

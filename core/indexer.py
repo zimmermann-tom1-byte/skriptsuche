@@ -8,6 +8,7 @@ import fitz  # PyMuPDF
 
 from .ai import AI
 from .db import DB
+from .topics import build_topics, date_from_name
 
 
 def _needs_vision(page: "fitz.Page", text: str) -> bool:
@@ -24,6 +25,11 @@ def _needs_vision(page: "fitz.Page", text: str) -> bool:
     except Exception:
         pass
     return False
+
+
+def _lecture_date(meta: dict) -> str | None:
+    d = meta.get("lecture_date") or date_from_name(meta["name"])
+    return str(d) if d else None
 
 
 def _clear_document_pages(db: DB, document_id: str) -> None:
@@ -54,6 +60,8 @@ def index_pdf(
             "web_url": meta.get("web_url"),
             "source": meta.get("source", "onedrive"),
             "page_count": doc.page_count,
+            "lecture_date": _lecture_date(meta),
+            "topics": None,
             "indexed_at": None,  # wird erst am Ende gesetzt → Abbruch = nächster Lauf versucht erneut
         },
         upsert_on="onedrive_item_id",
@@ -98,6 +106,10 @@ def index_pdf(
 
     db.update("documents", {"id": f"eq.{document_id}"},
               {"indexed_at": datetime.now(timezone.utc).isoformat()})
+    try:
+        build_topics(db, ai, document_id, meta["fach"], meta["name"])
+    except Exception as e:  # Themen lassen sich später nachholen
+        log(f"    ⚠ Themenübersicht fehlgeschlagen: {e}")
     return doc.page_count
 
 

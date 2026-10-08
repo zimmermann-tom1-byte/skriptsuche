@@ -16,6 +16,7 @@ Foto einer Aufgabe hochladen → die passenden Stellen in den Vorlesungsfolien f
 | `core/graph.py` | OneDrive über Microsoft Graph (Device-Code-Anmeldung, Refresh-Token in Supabase) |
 | `core/indexer.py` | PDF → Seiten, Bilder, Beschreibungen, Embeddings |
 | `core/search.py` | Suche und Auswahl |
+| `core/topics.py` | Themenübersicht je Datei, Vorlesungsdatum aus Dateinamen, Nachholen fehlender Daten |
 | `core/ai.py` | Claude und Voyage |
 | `core/db.py` | Supabase (REST und Storage) |
 | `supabase/migrations/` | Datenbankschema |
