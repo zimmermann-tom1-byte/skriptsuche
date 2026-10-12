@@ -12,6 +12,14 @@ from .db import DB
 _DATE_RE = re.compile(r"(?<!\d)(\d{1,2})\.(\d{1,2})\.?(\d{2,4})?(?!\d)")
 
 
+def name_stem(name: str) -> str:
+    """'Mengenlehre_30.9..pdf' und 'Mengenlehre 30.9.pdf' gelten als dieselbe Datei."""
+    n = name.lower().strip()
+    if n.endswith(".pdf"):
+        n = n[:-4]
+    return " ".join(n.replace("_", " ").split()).rstrip(". ")
+
+
 def date_from_name(name: str, today: date | None = None) -> date | None:
     """'Mengenlehre 30.9..pdf' → 2026-09-30. Ohne Jahr: das Jahr, das nicht in der Zukunft liegt."""
     today = today or date.today()

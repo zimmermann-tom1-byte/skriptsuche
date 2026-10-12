@@ -1,4 +1,5 @@
 """Nächtlicher Abgleich (GitHub Actions): python sync_job.py"""
+import os
 import sys
 
 from core.ai import AI
@@ -8,6 +9,9 @@ from core.sync import run_sync
 
 
 def main() -> int:
+    if not (os.environ.get("SUPABASE_URL") and os.environ.get("MS_CLIENT_ID")):
+        print("OneDrive-Abgleich noch nicht eingerichtet (GitHub-Secrets fehlen) – übersprungen.")
+        return 0
     cfg = load_config()
     db = DB(cfg.supabase_url, cfg.supabase_key)
     ai = AI(cfg.anthropic_key, cfg.voyage_key, cfg.index_model, cfg.query_model, cfg.voyage_model)

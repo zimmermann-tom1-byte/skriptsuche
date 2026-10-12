@@ -9,7 +9,7 @@ import sys
 
 import streamlit as st
 
-APP_VERSION = "2026-10-12b"
+APP_VERSION = "2026-10-12c"
 
 
 def _reload_changed_modules() -> bool:
@@ -38,7 +38,7 @@ from core.db import DB
 from core.indexer import index_pdf
 from core.search import neighbour_pages, search
 from core.sync import run_sync
-from core.topics import backfill, documents_overview
+from core.topics import backfill, documents_overview, name_stem
 
 st.set_page_config(page_title="Skriptsuche", page_icon="🔎", layout="wide")
 
@@ -242,13 +242,6 @@ with tab_themen:
                                          use_container_width=True)
 
 # ---------- Manuell hinzufügen ----------
-def _stem(name: str) -> str:
-    """'Mengenlehre_30.9..pdf' und 'Mengenlehre 30.9.pdf' gelten als dieselbe Datei."""
-    n = name.lower().strip()
-    if n.endswith(".pdf"):
-        n = n[:-4]
-    return " ".join(n.replace("_", " ").split()).rstrip(". ")
-
 
 with tab_upload:
     st.markdown("PDFs auswählen (auf dem iPad geht das direkt aus OneDrive), Fach wählen, „Einlesen“ tippen. "
@@ -267,7 +260,7 @@ with tab_upload:
                     # ersetzt die vorhandene Datei statt sie doppelt aufzunehmen.
                     vorhanden = [d for d in db.select("documents", {
                         "fach": f"eq.{fach_neu}", "source": "eq.upload",
-                        "select": "onedrive_item_id,name"}) if _stem(d["name"]) == _stem(f.name)]
+                        "select": "onedrive_item_id,name"}) if name_stem(d["name"]) == name_stem(f.name)]
                     item_id = (vorhanden[0]["onedrive_item_id"] if vorhanden
                                else "upload:" + hashlib.sha256(data).hexdigest()[:32])
                     if vorhanden:

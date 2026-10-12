@@ -8,6 +8,7 @@ from .ai import AI
 from .config import Config
 from .db import DB
 from .indexer import delete_document, index_pdf
+from .topics import name_stem
 
 
 def run_sync(cfg: Config, db: DB, ai: AI, log: Callable[[str], None] = print) -> dict:
@@ -38,6 +39,11 @@ def run_sync(cfg: Config, db: DB, ai: AI, log: Callable[[str], None] = print) ->
             or not known[f["id"]]["indexed_at"]]
     log(f"🔄 {len(todo)} Dateien einzulesen")
 
+    # Manuell hochgeladene Kopien derselben Datei werden durch die OneDrive-Version ersetzt
+    uploads: dict[str, list[dict]] = {}
+    for d in db.select("documents", {"source": "eq.upload", "select": "id,name,fach"}):
+        uploads.setdefault(name_stem(d["name"]), []).append(d)
+
     for f in todo:
         is_new = f["id"] not in known
         log(f"→ {f['path']}")
@@ -49,6 +55,9 @@ def run_sync(cfg: Config, db: DB, ai: AI, log: Callable[[str], None] = print) ->
                 "source": "onedrive",
             }, log=log)
             stats["seiten"] += n
+            for dup in uploads.pop(name_stem(f["name"]), []):
+                delete_document(db, dup["id"])
+                log(f"   ↻ ersetzt manuellen Upload ({dup['fach']} / {dup['name']})")
             stats["neu" if is_new else "aktualisiert"] += 1
             log(f"   ✓ {n} Seiten")
         except Exception as e:

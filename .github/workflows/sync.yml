@@ -1,10 +1,9 @@
 name: OneDrive-Abgleich
 
 on:
-  # Nächtlicher Lauf erst aktivieren, wenn OneDrive eingerichtet ist (MS_CLIENT_ID):
-  # schedule:
-  #   - cron: "17 2 * * *"
-  workflow_dispatch: {}
+  schedule:
+    - cron: "17 2 * * *"   # täglich ca. 04:17 Uhr (Sommerzeit)
+  workflow_dispatch: {}      # manuell startbar im Tab „Actions“
 
 concurrency:
   group: sync
@@ -28,4 +27,4 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
           MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
-          ONEDRIVE_ROOT: Studium
+          ONEDRIVE_ROOT: ${{ vars.ONEDRIVE_ROOT || 'Studium' }}
