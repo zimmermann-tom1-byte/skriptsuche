@@ -9,7 +9,7 @@ import sys
 
 import streamlit as st
 
-APP_VERSION = "2026-10-12"
+APP_VERSION = "2026-10-12b"
 
 
 def _reload_changed_modules() -> bool:
@@ -242,6 +242,14 @@ with tab_themen:
                                          use_container_width=True)
 
 # ---------- Manuell hinzufügen ----------
+def _stem(name: str) -> str:
+    """'Mengenlehre_30.9..pdf' und 'Mengenlehre 30.9.pdf' gelten als dieselbe Datei."""
+    n = name.lower().strip()
+    if n.endswith(".pdf"):
+        n = n[:-4]
+    return " ".join(n.replace("_", " ").split()).rstrip(". ")
+
+
 with tab_upload:
     st.markdown("PDFs auswählen (auf dem iPad geht das direkt aus OneDrive), Fach wählen, „Einlesen“ tippen. "
                 "Gleiche Datei nochmal hochladen = wird nicht doppelt aufgenommen.")
@@ -255,8 +263,17 @@ with tab_upload:
             data = f.getvalue()
             with st.spinner(f"Lese {f.name} ein …"):
                 try:
+                    # Gleicher Dateiname im gleichen Fach (z. B. GoodNotes-Version mit Notizen)
+                    # ersetzt die vorhandene Datei statt sie doppelt aufzunehmen.
+                    vorhanden = [d for d in db.select("documents", {
+                        "fach": f"eq.{fach_neu}", "source": "eq.upload",
+                        "select": "onedrive_item_id,name"}) if _stem(d["name"]) == _stem(f.name)]
+                    item_id = (vorhanden[0]["onedrive_item_id"] if vorhanden
+                               else "upload:" + hashlib.sha256(data).hexdigest()[:32])
+                    if vorhanden:
+                        st.write(f"↻ {f.name}: ersetzt die vorhandene Version")
                     n = index_pdf(db, ai, data, {
-                        "onedrive_item_id": "upload:" + hashlib.sha256(data).hexdigest()[:32],
+                        "onedrive_item_id": item_id,
                         "name": f.name, "path": f"{fach_neu}/{f.name}", "fach": fach_neu,
                         "source": "upload",
                     }, log=st.write)
