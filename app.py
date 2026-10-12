@@ -3,7 +3,33 @@ from __future__ import annotations
 
 import hashlib
 
+import importlib
+import os
+import sys
+
 import streamlit as st
+
+APP_VERSION = "2026-10-12"
+
+
+def _reload_changed_modules() -> bool:
+    """Streamlit lädt bei einem Update nur app.py neu, nicht bereits importierte core-Module.
+    Geänderte Module hier gezielt neu laden (Reihenfolge = Abhängigkeiten)."""
+    reloaded = False
+    for name in ["core.config", "core.db", "core.ai", "core.graph", "core.topics",
+                 "core.indexer", "core.search", "core.sync"]:
+        mod = sys.modules.get(name)
+        if not mod or not getattr(mod, "__file__", None):
+            continue
+        mtime = os.path.getmtime(mod.__file__)
+        if getattr(mod, "_loaded_mtime", mtime) != mtime:
+            mod = importlib.reload(mod)
+            reloaded = True
+        mod._loaded_mtime = mtime
+    return reloaded
+
+
+_modules_reloaded = _reload_changed_modules()
 
 from core import graph
 from core.ai import AI
@@ -24,6 +50,9 @@ def _clients(cfg):
     ai = AI(cfg.anthropic_key, cfg.voyage_key, cfg.index_model, cfg.query_model, cfg.voyage_model)
     return db, ai
 
+
+if _modules_reloaded:
+    _clients.clear()
 
 try:
     cfg = load_config()
@@ -67,6 +96,7 @@ with st.sidebar:
     fach_wahl = st.selectbox("Fach", optionen)
     fach = None if fach_wahl == "Alle Fächer" else fach_wahl
     st.caption(f"{sum(f['dokumente'] for f in fl)} Dateien · {sum(f['seiten'] for f in fl)} Seiten im Index")
+    st.caption(f"Version {APP_VERSION}")
 
     if cfg.ms_client_id and st.button("🔄 Jetzt aktualisieren", use_container_width=True):
         with st.status("Gleiche OneDrive ab …", expanded=True) as status:

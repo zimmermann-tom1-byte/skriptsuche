@@ -13,7 +13,8 @@ BUCKET = "pages"
 def _clean(value):
     """Postgres-Text darf keine Null-Zeichen enthalten (kommen in manchen PDFs vor)."""
     if isinstance(value, str):
-        return value.replace("\x00", "")
+        # Null-Zeichen und kaputte Unicode-Hälften (Surrogates) entfernen
+        return value.replace("\x00", "").encode("utf-8", "ignore").decode("utf-8")
     if isinstance(value, list):
         return [_clean(v) for v in value]
     if isinstance(value, dict):
