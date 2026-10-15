@@ -22,9 +22,9 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python sync_job.py
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
-          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || vars.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY || vars.SUPABASE_SECRET_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || vars.ANTHROPIC_API_KEY }}
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY || vars.VOYAGE_API_KEY }}
+          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID || vars.MS_CLIENT_ID }}
           ONEDRIVE_ROOT: ${{ vars.ONEDRIVE_ROOT || 'Studium' }}
